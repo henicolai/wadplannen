@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WadPlanner v3 — Getij & Vaaradvies</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --ink:#0b1926;--sea:#1a3a52;--deep:#091620;--hz:#3a7a9c;
+  --foam:#cfe0ea;--sand:#e6d4a8;--brass:#c49a3c;--alert:#d94f3b;
+  --go:#2a9a6a;--warn:#d4812a;--card:rgba(18,44,66,.38);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'IBM Plex Mono',monospace;background:var(--ink);color:var(--foam);min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 60% at 10% 90%,rgba(26,58,82,.7) 0%,transparent 70%),radial-gradient(ellipse 60% 50% at 90% 10%,rgba(9,22,32,.9) 0%,transparent 60%),repeating-linear-gradient(180deg,transparent 0,transparent 3px,rgba(200,221,232,.012) 3px,rgba(200,221,232,.012) 4px);z-index:0;pointer-events:none}
+.wrap{position:relative;z-index:1;max-width:1020px;margin:0 auto;padding:0 18px 80px}
+
+header{padding:30px 0 22px;border-bottom:1px solid rgba(200,221,232,.12);margin-bottom:28px;display:flex;align-items:flex-end;gap:14px}
+.logo-icon{font-size:38px;line-height:1;filter:drop-shadow(0 0 14px rgba(196,154,60,.5));animation:bob 4s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+.logo-text h1{font-family:'Playfair Display',serif;font-size:1.75rem;color:var(--sand);letter-spacing:-.02em;line-height:1}
+.logo-text p{font-size:.58rem;color:var(--hz);letter-spacing:.2em;text-transform:uppercase;margin-top:3px}
+.ver{margin-left:auto;font-size:.57rem;letter-spacing:.12em;text-transform:uppercase;color:var(--hz);opacity:.5;border:1px solid rgba(200,221,232,.1);padding:3px 9px;border-radius:20px;white-space:nowrap}
+
+.layout{display:grid;grid-template-columns:310px 1fr;gap:16px;align-items:start}
+@media(max-width:680px){.layout{grid-template-columns:1fr}}
+
+/* FORM */
+.fp{background:var(--card);border:1px solid rgba(200,221,232,.1);border-radius:2px;padding:20px;backdrop-filter:blur(6px);position:sticky;top:16px}
+.ftitle{font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;color:var(--brass);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.ftitle::after{content:'';flex:1;height:1px;background:rgba(196,154,60,.22)}
+.field{margin-bottom:11px}
+.field label{display:block;font-size:.55rem;letter-spacing:.16em;text-transform:uppercase;color:var(--hz);margin-bottom:5px}
+.field select,.field input{width:100%;background:rgba(9,22,32,.78);border:1px solid rgba(200,221,232,.11);border-radius:1px;color:var(--foam);font-family:'IBM Plex Mono',monospace;font-size:.76rem;padding:8px 10px;outline:none;transition:border-color .2s,box-shadow .2s;appearance:none;-webkit-appearance:none}
+.field select:focus,.field input:focus{border-color:var(--brass);box-shadow:0 0 0 2px rgba(196,154,60,.1)}
+.field select option{background:var(--deep)}
+.field input[type="date"]::-webkit-calendar-picker-indicator{filter:invert(.55);cursor:pointer}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.btn{width:100%;margin-top:5px;background:var(--brass);color:var(--ink);border:none;border-radius:1px;font-family:'IBM Plex Mono',monospace;font-size:.7rem;font-weight:500;letter-spacing:.16em;text-transform:uppercase;padding:12px;cursor:pointer;transition:all .2s}
+.btn:hover{background:#d4aa4a;transform:translateY(-1px);box-shadow:0 6px 24px rgba(196,154,60,.25)}
+.btn:active{transform:translateY(0)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+/* RIGHT */
+.right{display:flex;flex-direction:column;gap:14px}
+
+/* MAP */
+.map-card{background:var(--card);border:1px solid rgba(200,221,232,.1);border-radius:2px;overflow:hidden}
+.map-head{padding:9px 14px;border-bottom:1px solid rgba(200,221,232,.07);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.map-lbl{font-size:.54rem;letter-spacing:.16em;text-transform:uppercase;color:var(--hz);white-space:nowrap}
+.map-route{font-family:'Playfair Display',serif;font-size:.86rem;color:var(--sand);text-align:right}
+#map{height:320px;width:100%;background:var(--deep)}
+
+/* Leaflet dark overrides */
+.leaflet-tile{filter:brightness(.58) saturate(.65) hue-rotate(190deg)}
+.leaflet-control-attribution{background:rgba(9,22,32,.85)!important;color:var(--hz)!important;font-size:9px!important}
+.leaflet-control-zoom a{background:rgba(18,44,66,.92)!important;color:var(--foam)!important;border-color:rgba(200,221,232,.14)!important}
+.leaflet-popup-content-wrapper{background:rgba(11,25,38,.97)!important;border:1px solid rgba(200,221,232,.15)!important;border-radius:2px!important;color:var(--foam)!important;font-family:'IBM Plex Mono',monospace!important;font-size:11px!important;box-shadow:0 8px 32px rgba(0,0,0,.55)!important}
+.leaflet-popup-tip{background:rgba(11,25,38,.97)!important}
+.leaflet-popup-close-button{color:var(--hz)!important}
+
+/* map legend */
+.map-legend{padding:8px 14px;border-top:1px solid rgba(200,221,232,.06);display:flex;gap:16px;font-size:.55rem;color:var(--hz);letter-spacing:.08em}
+.leg-item{display:flex;align-items:center;gap:5px}
+.leg-line{width:22px;height:2px}
+.leg-dash{width:22px;height:2px;background:repeating-linear-gradient(90deg,var(--brass) 0,var(--brass) 5px,transparent 5px,transparent 9px)}
+.leg-dot{width:10px;height:10px;border-radius:50%}
+
+/* RESULT */
+#result{display:none;animation:fu .4s ease}
+@keyframes fu{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:180px;color:var(--hz);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;opacity:.42;gap:8px}
+.ei{font-size:2rem;opacity:.25}
+
+/* CARDS */
+.card{background:var(--card);border:1px solid rgba(200,221,232,.08);border-left:3px solid var(--hz);border-radius:2px;padding:15px 17px}
+.card.cg{border-left-color:var(--go)}.card.cw{border-left-color:var(--warn)}.card.ca{border-left-color:var(--alert)}.card.cb{border-left-color:var(--brass)}.card.cs{border-left-color:var(--hz)}
+.clbl{font-size:.53rem;letter-spacing:.18em;text-transform:uppercase;margin-bottom:7px}
+.cg .clbl{color:var(--go)}.cw .clbl{color:var(--warn)}.ca .clbl{color:var(--alert)}.cb .clbl{color:var(--brass)}.cs .clbl,.card .clbl{color:var(--hz)}
+.card h3{font-family:'Playfair Display',serif;font-size:.98rem;color:var(--sand);margin-bottom:4px}
+.card p{font-size:.7rem;color:var(--foam);line-height:1.7;opacity:.87}
+
+.dbanner{padding:10px 13px;border-radius:1px;font-size:.67rem;line-height:1.6}
+.dbanner.ok{background:rgba(42,154,106,.09);border:1px solid rgba(42,154,106,.26);color:#4dba88}
+.dbanner.warn{background:rgba(212,129,42,.09);border:1px solid rgba(212,129,42,.26);color:var(--warn)}
+.dbanner.danger{background:rgba(217,79,59,.09);border:1px solid rgba(217,79,59,.26);color:#e0705e}
+
+.slots{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:460px){.slots{grid-template-columns:1fr}}
+.slot{padding:13px;border-radius:1px;border:1px solid rgba(200,221,232,.08);background:rgba(9,22,32,.52)}
+.slot.best{border-color:rgba(42,154,106,.33);background:rgba(42,154,106,.065)}
+.slot.ok{border-color:rgba(212,129,42,.28);background:rgba(212,129,42,.055)}
+.slot.bad{border-color:rgba(217,79,59,.22);background:rgba(217,79,59,.045);opacity:.6}
+.stime{font-family:'Playfair Display',serif;font-size:1.45rem;color:var(--sand);letter-spacing:-.02em}
+.slbl{font-size:.53rem;letter-spacing:.14em;text-transform:uppercase;margin:3px 0 6px}
+.best .slbl{color:var(--go)}.ok .slbl{color:var(--warn)}.bad .slbl{color:var(--alert)}
+.slot p{font-size:.67rem;color:var(--foam);opacity:.78;line-height:1.5}
+.ssub{font-size:.57rem!important;opacity:.42!important;margin-top:4px!important}
+
+.ttable{width:100%;border-collapse:collapse;font-size:.7rem;margin-top:7px}
+.ttable th{text-align:left;font-size:.52rem;letter-spacing:.14em;text-transform:uppercase;color:var(--hz);padding:5px 7px;border-bottom:1px solid rgba(200,221,232,.08)}
+.ttable td{padding:6px 7px;border-bottom:1px solid rgba(200,221,232,.05);color:var(--foam)}
+.ttable tr:last-child td{border-bottom:none}
+.tHW{color:var(--brass);font-weight:500}.tLW{color:var(--hz)}
+
+.spark-wrap{margin:11px 0 3px}
+.spark-wrap canvas{width:100%;height:50px;display:block}
+.spark-lbls{display:flex;justify-content:space-between;font-size:.51rem;color:var(--hz);opacity:.48;letter-spacing:.05em;margin-top:2px}
+
+.badges{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.badge{font-size:.54rem;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:20px;border:1px solid rgba(200,221,232,.12);color:var(--foam);opacity:.6}
+.bg{border-color:rgba(42,154,106,.38);color:#4dba88;opacity:1}
+.bb{border-color:rgba(196,154,60,.38);color:var(--brass);opacity:1}
+.bw{border-color:rgba(212,129,42,.33);color:var(--warn);opacity:1}
+.ba{border-color:rgba(217,79,59,.38);color:#e0705e;opacity:1}
+
+.div{font-size:.53rem;letter-spacing:.18em;text-transform:uppercase;color:var(--hz);margin:16px 0 11px;display:flex;align-items:center;gap:8px}
+.div::before,.div::after{content:'';flex:1;height:1px;background:rgba(200,221,232,.08)}
+
+.rtop{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.rtitle{font-family:'Playfair Display',serif;font-size:1.3rem;color:var(--sand)}
+.rmeta{font-size:.57rem;color:var(--hz);letter-spacing:.08em;text-transform:uppercase}
+.rdist .nm{font-family:'Playfair Display',serif;font-size:1.2rem;color:var(--brass)}
+.rdist .eta{font-size:.57rem;color:var(--hz);letter-spacing:.1em;text-transform:uppercase;text-align:right}
+
+.steps{list-style:none;padding:0;margin:6px 0 0}
+.steps li{font-size:.67rem;color:var(--foam);opacity:.82;line-height:1.55;padding:3px 0 3px 13px;position:relative}
+.steps li::before{content:'→';position:absolute;left:0;color:var(--brass);opacity:.65}
+
+#loading{display:none;text-align:center;padding:34px;font-size:.7rem;color:var(--hz);letter-spacing:.1em}
+.wd span{display:inline-block;animation:wd 1.1s ease-in-out infinite}
+.wd span:nth-child(2){animation-delay:.15s}.wd span:nth-child(3){animation-delay:.3s}
+@keyframes wd{0%,100%{transform:translateY(0);opacity:.3}50%{transform:translateY(-7px);opacity:1}}
+
+.disc{margin-top:20px;padding:11px 13px;background:rgba(9,22,32,.5);border:1px solid rgba(200,221,232,.07);border-radius:1px;font-size:.6rem;color:var(--hz);line-height:1.65}
+.disc strong{color:var(--warn)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="logo-icon">⚓</div>
+  <div class="logo-text">
+    <h1>WadPlanner</h1>
+    <p>Getij &amp; Vaaradvies · Waddenzee</p>
+  </div>
+  <div class="ver">v3 · Echte Geulen · Mrt–Jun 2026</div>
+</header>
+
+<div class="layout">
+
+  <!-- FORM -->
+  <div class="fp">
+    <div class="ftitle">Vaarplanning</div>
+    <div class="field">
+      <label>Vertrekhaven</label>
+      <select id="van">
+        <optgroup label="Vasteland">
+          <option value="den_helder">Den Helder</option>
+          <option value="kornwerderzand">Kornwerderzand</option>
+          <option value="harlingen" selected>Harlingen</option>
+          <option value="holwerd">Holwerd</option>
+          <option value="lauwersoog">Lauwersoog</option>
+          <option value="delfzijl">Delfzijl</option>
+        </optgroup>
+        <optgroup label="Eilanden">
+          <option value="oudeschild">Oudeschild (Texel)</option>
+          <option value="vlieland_h">Vlieland Haven</option>
+          <option value="west_terschelling">West-Terschelling</option>
+          <option value="nes_ameland">Nes (Ameland)</option>
+          <option value="schiermonnikoog_h">Schiermonnikoog</option>
+        </optgroup>
+      </select>
+    </div>
+    <div class="field">
+      <label>Bestemming</label>
+      <select id="naar">
+        <optgroup label="Eilanden">
+          <option value="texel">Texel (Oudeschild)</option>
+          <option value="vlieland">Vlieland</option>
+          <option value="terschelling">West-Terschelling</option>
+          <option value="ameland">Ameland (Nes)</option>
+          <option value="schiermonnikoog">Schiermonnikoog</option>
+        </optgroup>
+        <optgroup label="Vasteland">
+          <option value="harlingen">Harlingen</option>
+          <option value="lauwersoog">Lauwersoog</option>
+          <option value="den_helder">Den Helder</option>
+          <option value="delfzijl">Delfzijl</option>
+        </optgroup>
+        <option value="borkum">Borkum (D)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Datum</label>
+      <input type="date" id="datum" min="2026-03-23" max="2026-06-30">
+    </div>
+    <div class="row2">
+      <div class="field">
+        <label>Diepgang (m)</label>
+        <input type="number" id="diepgang" value="1.90" min="0.4" max="3.5" step="0.05">
+      </div>
+      <div class="field">
+        <label>Snelheid (kn)</label>
+        <input type="number" id="snelheid" value="5" min="2" max="14" step="0.5">
+      </div>
+    </div>
+    <button class="btn" id="btnPlan" onclick="planTrip()">▶&nbsp; Bereken vaaradvies</button>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="right">
+    <div class="map-card">
+      <div class="map-head">
+        <span class="map-lbl">⚓ Vaarkaart · Echte geulen</span>
+        <span class="map-route" id="mapLbl">—</span>
+      </div>
+      <div id="map"></div>
+      <div class="map-legend">
+        <div class="leg-item"><div class="leg-dash"></div><span>Vaarroute</span></div>
+        <div class="leg-item"><div class="leg-line" style="background:rgba(58,122,156,.7)"></div><span>Geulverloop</span></div>
+        <div class="leg-item"><div class="leg-dot" style="background:#2a9a6a;border:2px solid #0b1926"></div><span>Vertrek</span></div>
+        <div class="leg-item"><div class="leg-dot" style="background:#c49a3c;border:2px solid #0b1926"></div><span>Bestemming</span></div>
+        <div class="leg-item"><div class="leg-dot" style="background:rgba(58,122,156,.6);width:8px;height:8px"></div><span>Waypoint</span></div>
+      </div>
+    </div>
+
+    <div id="loading"><div class="wd"><span>●</span><span>●</span><span>●</span></div><div style="margin-top:10px">Berekenen…</div></div>
+
+    <div id="result">
+      <div class="empty"><div class="ei">🗺</div><div>Kies haven, bestemming &amp; datum</div></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// ECHTE VAARGEUL-COÖRDINATEN
+// Gebaseerd op RWS officiele vaarwegkaarten Waddenzee West & Oost
+// [lat, lon] waypoints langs de werkelijke geulen
+// ═══════════════════════════════════════════════════════════════════
+const GEULEN = {
+
+  // ── Harlingen haven → Blauwe Slenk → Vliestroom
+  harlingen_vliestroom: [
+    [53.175, 5.412],   // Harlingen haven
+    [53.188, 5.395],   // Pollendam begin
+    [53.200, 5.375],   // Blauwe Slenk zuideinde
+    [53.218, 5.343],   // Blauwe Slenk midden
+    [53.240, 5.310],   // Blauwe Slenk nordeinde / Vliestroom aansluiting
+    [53.268, 5.270],   // Vliestroom
+  ],
+
+  // ── Vliestroom → West Meep → Slenk → Terschelling
+  vliestroom_terschelling: [
+    [53.268, 5.270],   // Vliestroom
+    [53.285, 5.255],   // Vliestroom noord
+    [53.300, 5.250],   // West Meep zuideinde
+    [53.318, 5.228],   // West Meep
+    [53.332, 5.228],   // Slenk begin
+    [53.342, 5.220],   // Slenk midden
+    [53.352, 5.218],   // Slenk / Schuitengat
+    [53.358, 5.222],   // West-Terschelling haven
+  ],
+
+  // ── Vliestroom → zeegat naar buiten → Vliesloot → Vlieland
+  vliestroom_vlieland: [
+    [53.268, 5.270],
+    [53.285, 5.200],   // richting zeegat tussen Vlieland & Terschelling
+    [53.300, 5.150],   // zeegat drempel
+    [53.305, 5.110],   // Vliesloot begin (Noordzee kant)
+    [53.302, 5.092],   // Vliesloot
+    [53.298, 5.084],   // Vlieland haven
+  ],
+
+  // ── Den Helder → Schulpengat → Noordzee → Vliesloot → Vlieland
+  denhelder_vlieland_buiten: [
+    [52.964, 4.745],   // Den Helder haven
+    [52.952, 4.755],   // Marsdiep uitgang
+    [52.940, 4.762],   // Schulpengat
+    [52.960, 4.800],   // Schulpengat NW
+    [53.000, 4.900],   // Noordzee kust
+    [53.060, 5.000],   // Langs Texel noordpunt
+    [53.110, 5.020],   // Eierlandse Gat zuiden
+    [53.180, 5.040],   // Langs Vlieland zuidkust
+    [53.250, 5.040],   // Vliehors punt
+    [53.285, 5.055],   // Vliesloot Noordzee kant
+    [53.302, 5.084],   // Vlieland haven
+  ],
+
+  // ── Den Helder → Schulpengat → Noordzee → Vliestroom → Terschelling
+  denhelder_terschelling_buiten: [
+    [52.964, 4.745],
+    [52.952, 4.755],
+    [52.940, 4.762],
+    [52.960, 4.800],
+    [53.010, 4.920],
+    [53.070, 5.020],
+    [53.140, 5.050],
+    [53.200, 5.080],
+    [53.250, 5.100],   // Noord Vlieland
+    [53.290, 5.140],   // Vliestroom ingang Noordzee
+    [53.310, 5.180],   // Vliestroom
+    [53.340, 5.210],   // Schuitengat
+    [53.358, 5.222],   // Terschelling haven
+  ],
+
+  // ── Den Helder → Marsdiep → Oudeschild Texel
+  denhelder_texel: [
+    [52.964, 4.745],
+    [52.980, 4.790],   // Marsdiep
+    [53.010, 4.820],   // Texelstroom
+    [53.035, 4.840],   // Molengat
+    [53.043, 4.856],   // Oudeschild
+  ],
+
+  // ── Harlingen → Vliestroom → Noordzee → Westgat Ameland → Nes
+  harlingen_ameland_buiten: [
+    [53.175, 5.412],
+    [53.188, 5.395],
+    [53.210, 5.355],   // Blauwe Slenk
+    [53.245, 5.305],
+    [53.268, 5.270],   // Vliestroom
+    [53.290, 5.240],   // Vliestroom uitgang richting zee
+    [53.320, 5.200],   // Noordzee
+    [53.380, 5.300],   // Langs Terschelling noordkant
+    [53.440, 5.450],   // Richting Ameland Westgat
+    [53.462, 5.550],   // Westgat Ameland
+    [53.458, 5.630],   // Westgat ingang
+    [53.452, 5.680],   // Molengat begin
+    [53.448, 5.720],   // Molengat
+    [53.440, 5.760],   // Reegeul begin
+    [53.435, 5.778],   // Reegeul
+    [53.431, 5.782],   // Nes haven
+  ],
+
+  // ── Holwerd → veerbootgeul → Nes Ameland
+  holwerd_ameland: [
+    [53.400, 5.893],   // Holwerd veerdam
+    [53.408, 5.876],
+    [53.415, 5.855],
+    [53.420, 5.840],
+    [53.425, 5.820],
+    [53.428, 5.800],
+    [53.431, 5.782],   // Nes haven
+  ],
+
+  // ── Lauwersoog → Wierumerwad → Pinkewad → Zuiderspruit → Nes Ameland
+  lauwersoog_ameland: [
+    [53.407, 6.198],   // Lauwersoog
+    [53.415, 6.150],   // Zoutkamperlaag
+    [53.425, 6.090],   // Paesensrede
+    [53.432, 6.030],   // Wierumerwad (wantij!)
+    [53.438, 5.975],
+    [53.442, 5.920],   // Pinkewad (wantij!)
+    [53.445, 5.875],
+    [53.442, 5.840],   // Zuiderspruit
+    [53.438, 5.810],
+    [53.435, 5.790],   // Reegeul
+    [53.431, 5.782],   // Nes
+  ],
+
+  // ── Lauwersoog → Schiermonnikoog
+  lauwersoog_schiermonnikoog: [
+    [53.407, 6.198],
+    [53.420, 6.175],   // Zoutkamperlaag
+    [53.445, 6.170],   // Geul van Brakzand
+    [53.465, 6.160],   // Siegewal
+    [53.481, 6.165],   // Schiermonnikoog haven
+  ],
+
+  // ── Kornwerderzand → Boontjes → Vliestroom → West Meep → Terschelling
+  kornwerderzand_terschelling: [
+    [53.079, 5.333],   // Kornwerderzand
+    [53.098, 5.345],   // Boontjes begin
+    [53.120, 5.360],   // Boontjes midden
+    [53.142, 5.372],   // Pollendam / Harlingen geul
+    [53.165, 5.380],   // Aansluiting Blauwe Slenk
+    [53.210, 5.355],   // Blauwe Slenk
+    [53.245, 5.305],
+    [53.268, 5.270],   // Vliestroom
+    [53.285, 5.255],
+    [53.300, 5.250],   // West Meep
+    [53.318, 5.228],
+    [53.342, 5.220],
+    [53.358, 5.222],   // Terschelling
+  ],
+
+  // ── Kornwerderzand → Verversgat → Inschot → Vliestroom → Vlieland
+  kornwerderzand_vlieland: [
+    [53.079, 5.333],
+    [53.098, 5.345],
+    [53.115, 5.340],   // Verversgat aftakking
+    [53.135, 5.330],   // Verversgat
+    [53.155, 5.315],   // Inschot zuiden
+    [53.175, 5.295],   // Inschot midden
+    [53.200, 5.270],   // Inschot / Vliestroom
+    [53.240, 5.250],
+    [53.262, 5.235],   // Vliestroom
+    [53.280, 5.190],   // Richting zeegat Vlieland
+    [53.300, 5.150],
+    [53.302, 5.084],   // Vlieland
+  ],
+
+  // ── Terschelling → Oosterom → Blauwe Balg → Nes Ameland
+  terschelling_ameland: [
+    [53.358, 5.222],   // Terschelling
+    [53.372, 5.270],   // Oosterom begin
+    [53.388, 5.330],   // Oosterom midden
+    [53.400, 5.400],   // Oosterom einde
+    [53.412, 5.470],   // Blauwe Balg begin
+    [53.420, 5.530],   // Blauwe Balg midden
+    [53.428, 5.620],   // Blauwe Balg einde / Molengat
+    [53.435, 5.690],   // Molengat
+    [53.435, 5.735],   // Reegeul begin
+    [53.431, 5.782],   // Nes
+  ],
+
+  // ── Vlieland → Schuitengat → Terschelling (korte route)
+  vlieland_terschelling: [
+    [53.297, 5.086],   // Vlieland haven
+    [53.305, 5.110],   // Vliesloot
+    [53.310, 5.140],   // Schuitengat begin
+    [53.322, 5.165],   // Schuitengat
+    [53.336, 5.192],   // Schuitengat / Slenk
+    [53.350, 5.212],
+    [53.358, 5.222],   // Terschelling
+  ],
+
+  // ── Harlingen → Terschelling direct (via West Meep)
+  harlingen_terschelling: [
+    [53.175, 5.412],
+    [53.188, 5.395],
+    [53.200, 5.375],   // Blauwe Slenk
+    [53.218, 5.343],
+    [53.240, 5.310],
+    [53.268, 5.270],   // Vliestroom
+    [53.285, 5.255],
+    [53.300, 5.250],   // West Meep zuiden
+    [53.318, 5.228],   // West Meep
+    [53.332, 5.228],   // Slenk
+    [53.342, 5.220],
+    [53.358, 5.222],   // Terschelling
+  ],
+
+  // ── Oudeschild → Texelstroom → Marsdiep → Schulpengat / Noordzee → Harlingen
+  oudeschild_harlingen: [
+    [53.043, 4.856],
+    [53.035, 4.840],
+    [53.010, 4.820],
+    [52.980, 4.790],
+    [52.964, 4.745],   // Den Helder passage
+    [53.000, 4.900],
+    [53.070, 5.020],
+    [53.150, 5.050],
+    [53.210, 5.090],   // Langs Vlieland noordkust
+    [53.270, 5.210],   // Vliestroom
+    [53.245, 5.305],   // Blauwe Slenk
+    [53.210, 5.355],
+    [53.175, 5.412],   // Harlingen
+  ],
+
+  // ── Delfzijl → Westereems → Schiermonnikoog
+  delfzijl_schiermonnikoog: [
+    [53.332, 6.930],   // Delfzijl
+    [53.360, 6.820],   // Eems
+    [53.395, 6.670],   // Westereems
+    [53.430, 6.540],   // Eilanderbalg
+    [53.460, 6.380],
+    [53.481, 6.165],   // Schiermonnikoog
+  ],
+
+  // ── Harlingen → buitenom → Schiermonnikoog
+  harlingen_schiermonnikoog: [
+    [53.175, 5.412],
+    [53.200, 5.355],
+    [53.240, 5.310],
+    [53.268, 5.270],   // Vliestroom
+    [53.320, 5.200],   // Noordzee
+    [53.380, 5.320],
+    [53.440, 5.520],   // Langs Ameland
+    [53.468, 5.700],
+    [53.478, 5.900],
+    [53.481, 6.030],
+    [53.481, 6.165],   // Schiermonnikoog
+  ],
+
+  // ── Harlingen → Vlieland (via zeegat)
+  harlingen_vlieland: [
+    [53.175, 5.412],
+    [53.200, 5.375],
+    [53.218, 5.343],
+    [53.240, 5.310],
+    [53.268, 5.270],   // Vliestroom
+    [53.288, 5.220],   // Richting zeegat
+    [53.300, 5.155],   // Zeegat drempel
+    [53.302, 5.092],   // Vliesloot
+    [53.298, 5.084],   // Vlieland
+  ],
+
+  // ── Harlingen → Texel (buitenom via Vliestroom)
+  harlingen_texel: [
+    [53.175, 5.412],
+    [53.200, 5.355],
+    [53.240, 5.310],
+    [53.268, 5.270],   // Vliestroom
+    [53.290, 5.220],
+    [53.300, 5.150],   // Zeegat buitengaats
+    [53.280, 5.060],
+    [53.230, 4.980],
+    [53.160, 4.940],
+    [53.090, 4.900],
+    [53.060, 4.870],   // Molengat
+    [53.043, 4.856],   // Oudeschild
+  ],
+
+  // ── Nes Ameland → Lauwersoog (omgekeerd)
+  nes_lauwersoog: [
+    [53.431, 5.782],
+    [53.435, 5.790],
+    [53.438, 5.810],
+    [53.442, 5.840],
+    [53.445, 5.875],
+    [53.442, 5.920],
+    [53.438, 5.975],
+    [53.432, 6.030],
+    [53.425, 6.090],
+    [53.415, 6.150],
+    [53.407, 6.198],
+  ],
+
+  // ── Schiermonnikoog → Lauwersoog
+  schiermonnikoog_lauwersoog: [
+    [53.481, 6.165],
+    [53.465, 6.160],
+    [53.445, 6.170],
+    [53.420, 6.175],
+    [53.407, 6.198],
+  ],
+
+  // ── Harlingen → Borkum (via Noordzee)
+  harlingen_borkum: [
+    [53.175, 5.412],
+    [53.200, 5.355],
+    [53.245, 5.305],
+    [53.268, 5.270],
+    [53.310, 5.200],   // Noordzee
+    [53.380, 5.380],
+    [53.450, 5.600],   // Langs Ameland
+    [53.480, 5.900],
+    [53.490, 6.100],   // Zoutkamperlaag buiten
+    [53.510, 6.300],
+    [53.540, 6.500],   // Richting Borkum
+    [53.590, 6.660],   // Borkum
+  ],
+};
+
+// ── Welke geulset per route-key ─────────────────────────────────
+const ROUTE_GEULEN = {
+  "harlingen-terschelling":   ["harlingen_terschelling"],
+  "harlingen-vlieland":       ["harlingen_vlieland"],
+  "harlingen-ameland":        ["harlingen_ameland_buiten"],
+  "harlingen-schiermonnikoog":["harlingen_schiermonnikoog"],
+  "harlingen-texel":          ["harlingen_texel"],
+  "harlingen-borkum":         ["harlingen_borkum"],
+  "den_helder-vlieland":      ["denhelder_vlieland_buiten"],
+  "den_helder-terschelling":  ["denhelder_terschelling_buiten"],
+  "den_helder-texel":         ["denhelder_texel"],
+  "lauwersoog-ameland":       ["lauwersoog_ameland"],
+  "lauwersoog-schiermonnikoog":["lauwersoog_schiermonnikoog"],
+  "holwerd-ameland":          ["holwerd_ameland"],
+  "kornwerderzand-terschelling":["kornwerderzand_terschelling"],
+  "kornwerderzand-vlieland":  ["kornwerderzand_vlieland"],
+  "oudeschild-harlingen":     ["oudeschild_harlingen"],
+  "west_terschelling-ameland":["terschelling_ameland"],
+  "vlieland_h-terschelling":  ["vlieland_terschelling"],
+  "nes_ameland-lauwersoog":   ["nes_lauwersoog"],
+  "schiermonnikoog_h-lauwersoog":["schiermonnikoog_lauwersoog"],
+  "delfzijl-schiermonnikoog": ["delfzijl_schiermonnikoog"],
+};
+
+// ── Kritieke punten als markers ─────────────────────────────────
+const KRITIEKE_PUNTEN = {
+  "harlingen-terschelling":   [[53.310, 5.250, "West Meep — ebstroom ongunstig, passeer rond LW-kentering"]],
+  "harlingen-vlieland":       [[53.300, 5.150, "Zeegat drempel — 3m diep bij LW, deining mogelijk"]],
+  "harlingen-ameland":        [[53.462, 5.540, "Westgat Ameland — alleen 2,5u vóór t/m 2u na HW"]],
+  "lauwersoog-ameland":       [[53.432, 6.030, "Wierumerwad — wantij, max 1,35m diepgang"],[53.442, 5.920, "Pinkewad — wantij, max 1,35m diepgang"]],
+  "west_terschelling-ameland":[[53.415, 5.475, "Blauwe Balg — max 1,50m, 15 mei–1 sept, 3u vóór t/m 2u na HW"]],
+  "den_helder-vlieland":      [[53.010, 4.820, "Molengat — niet betond, afraden bij aanlandige wind"]],
+  "kornwerderzand-terschelling":[[53.165, 5.380, "Pollendam — niet over blind werk P22/P24 varen"]],
+};
+
+// ── Haven-coördinaten ───────────────────────────────────────────
+const HAVENS = {
+  harlingen:        [53.175, 5.412],
+  den_helder:       [52.964, 4.745],
+  lauwersoog:       [53.407, 6.198],
+  holwerd:          [53.400, 5.893],
+  kornwerderzand:   [53.079, 5.333],
+  oudeschild:       [53.043, 4.856],
+  vlieland_h:       [53.298, 5.084],
+  west_terschelling:[53.358, 5.222],
+  nes_ameland:      [53.431, 5.782],
+  schiermonnikoog_h:[53.481, 6.165],
+  delfzijl:         [53.332, 6.930],
+  borkum:           [53.590, 6.660],
+  // aliases voor bestemmingen
+  texel:            [53.043, 4.856],
+  vlieland:         [53.298, 5.084],
+  terschelling:     [53.358, 5.222],
+  ameland:          [53.431, 5.782],
+  schiermonnikoog:  [53.481, 6.165],
+};
+
+// ── ROUTES DATABASE ─────────────────────────────────────────────
+const R = {
+"harlingen-terschelling":{naam:"Harlingen → West-Terschelling",afstand:36,type:"wad",desc:["Blauwe Slenk","Vliestroom","West Meep","Slenk / Schuitengat","West-Terschelling"],kritiek:"West Meep: ebstroom ongunstig — passeer rond LW-kentering",voff:90,wmax:null,wdg:99,tips:["Vertrek ~1,5u na HW Harlingen","Ebstroom mee op Blauwe Slenk & Vliestroom","West Meep: probeer rond laagwaterkentering te passeren","VHF 2 (Brandaris) verplicht uitluisteren"],marf:"VHF 2 Brandaris"},
+"harlingen-vlieland":{naam:"Harlingen → Vlieland",afstand:42,type:"wad_buiten",desc:["Blauwe Slenk","Vliestroom","Zeegat Vlieland","Vliesloot","Vlieland Haven"],kritiek:"Zeegat drempel 3m diep bij LW, deining bij aanlandige wind. Haven: stroom tot 4kn bij invaart",voff:90,wmax:null,wdg:99,tips:["Vertrek ~1,5u na HW Harlingen","Zeegat: harde stroom tot 4kn","Vlieland haven: smalle invaart, stroom tot 4kn","VHF 2 (Brandaris)"],marf:"VHF 2 Brandaris"},
+"harlingen-ameland":{naam:"Harlingen → Ameland (Nes)",afstand:65,type:"buiten",desc:["Blauwe Slenk","Vliestroom","Noordzee","Westgat Ameland","Molengat","Reegeul","Nes"],kritiek:"Wantijroute max 1,40m diepgang. Nes invaart: 2,5u vóór t/m 2u na HW Ameland",voff:90,wmax:1.40,wdg:99,tips:["Directe wantijroute NIET mogelijk >1,40m — buitenom is de enige optie","Binnenkomst Nes: 2,5u vóór tot 2u na HW Ameland","Vaartijd ~10–12u: vroeg vertrek vereist","VHF 2 + VHF 4 (CMW)"],marf:"VHF 2 + VHF 4"},
+"harlingen-schiermonnikoog":{naam:"Harlingen → Schiermonnikoog",afstand:82,type:"buiten",desc:["Blauwe Slenk","Vliestroom","Noordzee","Langs Ameland","Schiermonnikoog"],kritiek:"Zeer lange route ~14–16u. Havendrempel 1,50m bij LW",voff:90,wmax:null,wdg:1.5,tips:["Overweeg tussenstop Terschelling","Haven: binnenvaren rond HW","VHF 2 + VHF 5"],marf:"VHF 2 + VHF 5"},
+"harlingen-texel":{naam:"Harlingen → Texel (Oudeschild)",afstand:68,type:"buiten",desc:["Blauwe Slenk","Vliestroom","Noordzee","Molengat","Oudeschild"],kritiek:"Molengat verzandt, niet betond — vermijd bij aanlandige wind",voff:90,wmax:null,wdg:99,tips:["Vertrek ~1,5u na HW Harlingen","Molengat: gele boeien, bij twijfel Schulpengat","VHF 62 (Den Helder)"],marf:"VHF 62 Den Helder"},
+"harlingen-borkum":{naam:"Harlingen → Borkum (D)",afstand:100,type:"buiten",desc:["Blauwe Slenk","Vliestroom","Noordzee","Westereems","Borkum"],kritiek:"Zeer lange route ~18–20u. Tussenstopplan vereist. Eems: druk beroepsverkeer",voff:90,wmax:null,wdg:99,tips:["Plan tussenstop Schiermonnikoog of Lauwersoog","Eems: VHF 20 verplicht","VHF 2 + VHF 20"],marf:"VHF 2 + VHF 20"},
+"den_helder-vlieland":{naam:"Den Helder → Vlieland",afstand:35,type:"buiten",desc:["Marsdiep","Schulpengat","Noordzee","Vliesloot","Vlieland Haven"],kritiek:"Marsdiep: druk scheepvaart. Molengat niet betond",voff:270,wmax:null,wdg:99,tips:["Optimaal: 4,5u na HW Den Helder","Molengat bij twijfel vermijden — Schulpengat","VHF 62 verplicht"],marf:"VHF 62 Den Helder"},
+"den_helder-terschelling":{naam:"Den Helder → Terschelling",afstand:55,type:"buiten",desc:["Marsdiep","Schulpengat","Noordzee","Vliestroom","Terschelling"],kritiek:"Lange buitengaatse route ~9–11u. Vliestroom: plan vloed mee",voff:270,wmax:null,wdg:99,tips:["Vertrek 4,5u na HW Den Helder","VHF 62 + VHF 2 (Brandaris)"],marf:"VHF 62 + VHF 2"},
+"den_helder-texel":{naam:"Den Helder → Texel (Oudeschild)",afstand:12,type:"wad",desc:["Marsdiep","Texelstroom","Molengat","Oudeschild"],kritiek:"Marsdiep: druk scheepvaartverkeer. Molengat niet betond",voff:0,wmax:null,wdg:99,tips:["Vertrek rond HW Den Helder","VHF 62 verplicht"],marf:"VHF 62 Den Helder"},
+"lauwersoog-ameland":{naam:"Lauwersoog → Ameland (Nes)",afstand:40,type:"wad",desc:["Zoutkamperlaag","Wierumerwad (wantij)","Pinkewad (wantij)","Zuiderspruit","Reegeul","Nes"],kritiek:"Wierumerwad + Pinkewad: wantij max 1,35m diepgang",voff:-180,wmax:1.35,wdg:1.35,tips:["Max wantijdiepgang: 1,35m","Vertrek ~3u vóór HW Lauwersoog","Check actuele dieptes: nautin.nl","VHF 4 (CMW)"],marf:"VHF 4 CMW"},
+"lauwersoog-schiermonnikoog":{naam:"Lauwersoog → Schiermonnikoog",afstand:18,type:"wad",desc:["Zoutkamperlaag","Geul van Brakzand","Siegewal","Haven Schiermonnikoog"],kritiek:"Havendrempel 1,50m bij LW — binnenvaren vóór/rond HW",voff:-90,wmax:null,wdg:1.5,tips:["Vertrek ~1,5u vóór HW","Drempel: binnenvaren rond HW","VHF 5"],marf:"VHF 5"},
+"holwerd-ameland":{naam:"Holwerd → Ameland (Nes)",afstand:22,type:"wad",desc:["Veerbootgeul Holwerd–Ameland","Zuiderspruit","Reegeul","Nes"],kritiek:"Intensief gebaggerde geul, dynamisch — altijd waddendata.nl raadplegen",voff:-120,wmax:null,wdg:1.9,tips:["Vertrek ~2u vóór HW Holwerd","Check actuele dieptes waddendata.nl","VHF 4 + VHF 5"],marf:"VHF 4 + VHF 5"},
+"kornwerderzand-terschelling":{naam:"Kornwerderzand → Terschelling",afstand:38,type:"wad",desc:["Boontjes","Pollendam","Vliestroom","West Meep","Slenk","Terschelling"],kritiek:"Pollendam: niet over blind werk P22/P24 varen",voff:0,wmax:null,wdg:99,tips:["Vertrek rond HW Kornwerderzand","Pollendam: vaar tussen gele en groene tonnen","VHF 2 (Brandaris)"],marf:"VHF 2 Brandaris"},
+"kornwerderzand-vlieland":{naam:"Kornwerderzand → Vlieland",afstand:42,type:"wad",desc:["Boontjes","Verversgat","Inschot","Vliestroom","Vlieland"],kritiek:"Inschot diepte variabel — check wadvaarders.nl",voff:0,wmax:null,wdg:99,tips:["Vertrek rond HW Kornwerderzand","Check Inschot diepte","VHF 2 (Brandaris)"],marf:"VHF 2 Brandaris"},
+"oudeschild-harlingen":{naam:"Texel → Harlingen",afstand:68,type:"buiten",desc:["Molengat / Schulpengat","Noordzee / Vliestroom","Blauwe Slenk","Harlingen"],kritiek:"Molengat niet betond bij twijfel buitenom",voff:-60,wmax:null,wdg:99,tips:["Vertrek ~1u vóór HW Oudeschild","VHF 62 (Den Helder)"],marf:"VHF 62 Den Helder"},
+"west_terschelling-ameland":{naam:"Terschelling → Ameland",afstand:55,type:"wad",desc:["Oosterom","Blauwe Balg*","Molengat","Reegeul","Nes"],kritiek:"Blauwe Balg: max 1,50m, alleen 15 mei–1 sept (broedseizoen), 3u vóór t/m 2u na HW",voff:-180,wmax:1.50,wdg:1.5,tips:["Max diepgang Blauwe Balg: 1,50m","Blauwe Balg: 15 mei – 1 sept","Buiten seizoen: buitenom Noordzee","Vertrek ~3u vóór HW Terschelling"],marf:"VHF 2 Brandaris"},
+"vlieland_h-terschelling":{naam:"Vlieland → Terschelling",afstand:20,type:"wad",desc:["Vliesloot","Schuitengat","West-Terschelling"],kritiek:"Schuitengat diepte variabel — check actuele data",voff:-60,wmax:null,wdg:99,tips:["Vertrek ~1u vóór HW Vlieland","Schuitengat korter dan buitenom","VHF 2 (Brandaris)"],marf:"VHF 2 Brandaris"},
+"nes_ameland-lauwersoog":{naam:"Ameland → Lauwersoog",afstand:40,type:"wad",desc:["Reegeul","Zuiderspruit","Pinkewad (wantij)","Wierumerwad (wantij)","Zoutkamperlaag","Lauwersoog"],kritiek:"Wantij max 1,35m diepgang",voff:-180,wmax:1.35,wdg:1.35,tips:["Max wantijdiepgang 1,35m","Vertrek ~3u vóór HW Nes","Check nautin.nl","VHF 4 (CMW)"],marf:"VHF 4 CMW"},
+"schiermonnikoog_h-lauwersoog":{naam:"Schiermonnikoog → Lauwersoog",afstand:18,type:"wad",desc:["Siegewal","Geul van Brakzand","Zoutkamperlaag","Lauwersoog"],kritiek:"Vertrek mogelijk 2u na HW (daarna te ondiep)",voff:120,wmax:null,wdg:99,tips:["Vertrek ~2u na HW Schiermonnikoog","VHF 5"],marf:"VHF 5"},
+"delfzijl-schiermonnikoog":{naam:"Delfzijl → Schiermonnikoog",afstand:30,type:"wad",desc:["Eems","Westereems","Eilanderbalg","Schiermonnikoog"],kritiek:"Eems: druk beroepsverkeer. Havendrempel 1,50m bij LW",voff:-90,wmax:null,wdg:1.5,tips:["Vertrek ~1,5u vóór HW Delfzijl","Eems: VHF 20 verplicht","VHF 20 Delfzijl"],marf:"VHF 20 Delfzijl"},
+};
+
+// ── OFFSETS & GETIJDATA ─────────────────────────────────────────
+const OFF={harlingen:0,den_helder:-120,lauwersoog:10,holwerd:5,kornwerderzand:-15,oudeschild:-125,vlieland_h:-10,west_terschelling:0,nes_ameland:5,schiermonnikoog_h:20,delfzijl:30,borkum:45,texel:-125,vlieland:-10,terschelling:0,ameland:5,schiermonnikoog:20};
+
+const TD={"2026-03-23":[{t:"07:34",h:87},{t:"13:45",h:-104},{t:"19:51",h:87}],"2026-03-24":[{t:"08:07",h:88},{t:"14:02",h:-98},{t:"20:30",h:88}],"2026-03-25":[{t:"08:40",h:88},{t:"14:35",h:-94},{t:"21:13",h:85}],"2026-03-26":[{t:"09:20",h:84},{t:"15:27",h:-88},{t:"22:08",h:70}],"2026-03-27":[{t:"10:16",h:79},{t:"15:59",h:-79},{t:"23:27",h:55}],"2026-03-28":[{t:"11:44",h:85},{t:"17:38",h:-74}],"2026-03-29":[{t:"07:47",h:98},{t:"14:27",h:-98},{t:"20:01",h:56}],"2026-03-30":[{t:"09:01",h:111},{t:"15:43",h:-115},{t:"21:07",h:68}],"2026-03-31":[{t:"09:58",h:117},{t:"16:41",h:-127},{t:"21:59",h:76}],"2026-04-01":[{t:"10:42",h:117},{t:"17:29",h:-127},{t:"22:43",h:79}],"2026-04-02":[{t:"11:16",h:113},{t:"18:10",h:-118},{t:"23:21",h:79}],"2026-04-03":[{t:"11:42",h:108},{t:"18:45",h:-108},{t:"23:56",h:82}],"2026-04-04":[{t:"12:08",h:104},{t:"19:16",h:-104}],"2026-04-05":[{t:"07:30",h:102},{t:"12:37",h:-105},{t:"19:46",h:93}],"2026-04-06":[{t:"07:56",h:94},{t:"13:05",h:-105},{t:"20:14",h:93}],"2026-04-07":[{t:"08:22",h:91},{t:"13:28",h:-103},{t:"20:42",h:91}],"2026-04-08":[{t:"08:47",h:89},{t:"13:43",h:-101},{t:"21:10",h:89}],"2026-04-09":[{t:"09:15",h:87},{t:"14:09",h:-100},{t:"21:44",h:87}],"2026-04-10":[{t:"09:52",h:82},{t:"14:57",h:-97},{t:"22:29",h:82}],"2026-04-11":[{t:"10:41",h:75},{t:"16:10",h:-91},{t:"23:31",h:48}],"2026-04-12":[{t:"11:44",h:74},{t:"17:37",h:-81}],"2026-04-13":[{t:"06:46",h:82},{t:"13:16",h:-81},{t:"19:10",h:45}],"2026-04-14":[{t:"08:13",h:94},{t:"14:57",h:-96},{t:"20:34",h:56}],"2026-04-15":[{t:"09:20",h:103},{t:"16:02",h:-111},{t:"21:32",h:67}],"2026-04-16":[{t:"10:12",h:107},{t:"16:56",h:-119},{t:"22:21",h:74}],"2026-04-17":[{t:"10:55",h:108},{t:"17:44",h:-121},{t:"23:04",h:78}],"2026-04-18":[{t:"11:32",h:107},{t:"18:30",h:-119},{t:"23:46",h:82}],"2026-04-19":[{t:"12:06",h:92},{t:"19:14",h:-116}],"2026-04-20":[{t:"07:34",h:103},{t:"12:40",h:-112},{t:"19:56",h:92}],"2026-04-21":[{t:"08:11",h:95},{t:"13:16",h:-108},{t:"20:38",h:95}],"2026-04-22":[{t:"08:47",h:98},{t:"13:55",h:-105},{t:"21:20",h:84}],"2026-04-23":[{t:"09:24",h:96},{t:"14:39",h:-101},{t:"22:08",h:70}],"2026-04-24":[{t:"10:08",h:92},{t:"15:40",h:-97},{t:"23:06",h:56}],"2026-04-25":[{t:"11:07",h:90},{t:"17:00",h:-91}],"2026-04-26":[{t:"06:08",h:93},{t:"12:28",h:-102},{t:"18:21",h:47}],"2026-04-27":[{t:"07:23",h:100},{t:"13:58",h:-109},{t:"19:34",h:53}],"2026-04-28":[{t:"08:32",h:106},{t:"15:12",h:-119},{t:"20:37",h:62}],"2026-04-29":[{t:"09:25",h:107},{t:"16:12",h:-125},{t:"21:29",h:70}],"2026-04-30":[{t:"10:06",h:103},{t:"17:01",h:-122},{t:"22:12",h:75}],"2026-05-01":[{t:"10:38",h:99},{t:"17:43",h:-113},{t:"22:50",h:80}],"2026-05-02":[{t:"11:07",h:94},{t:"18:18",h:-104},{t:"23:25",h:87}],"2026-05-03":[{t:"11:38",h:89},{t:"18:49",h:-102},{t:"23:57",h:94}],"2026-05-04":[{t:"12:12",h:99},{t:"19:19",h:-104}],"2026-05-05":[{t:"07:25",h:99},{t:"12:43",h:-107},{t:"19:50",h:83}],"2026-05-06":[{t:"07:53",h:96},{t:"13:10",h:-106},{t:"20:20",h:74}],"2026-05-07":[{t:"08:20",h:93},{t:"13:33",h:-105},{t:"20:50",h:64}],"2026-05-08":[{t:"08:51",h:90},{t:"14:00",h:-105},{t:"21:27",h:56}],"2026-05-09":[{t:"09:31",h:86},{t:"14:45",h:-104},{t:"22:13",h:50}],"2026-05-10":[{t:"10:21",h:50},{t:"15:50",h:-104},{t:"23:13",h:42}],"2026-05-11":[{t:"11:22",h:38},{t:"17:02",h:-93}],"2026-05-12":[{t:"06:05",h:87},{t:"12:36",h:-91},{t:"18:13",h:42}],"2026-05-13":[{t:"07:26",h:93},{t:"14:02",h:-99},{t:"19:29",h:51}],"2026-05-14":[{t:"08:34",h:99},{t:"15:16",h:-109},{t:"20:43",h:62}],"2026-05-15":[{t:"09:30",h:102},{t:"16:18",h:-115},{t:"21:43",h:71}],"2026-05-16":[{t:"10:20",h:101},{t:"17:14",h:-116},{t:"22:36",h:80}],"2026-05-17":[{t:"11:04",h:98},{t:"18:06",h:-114},{t:"23:26",h:88}],"2026-05-18":[{t:"11:45",h:95},{t:"18:54",h:-112}],"2026-05-19":[{t:"07:11",h:102},{t:"12:25",h:-111},{t:"19:42",h:92}],"2026-05-20":[{t:"07:52",h:101},{t:"13:02",h:-107},{t:"20:25",h:94}],"2026-05-21":[{t:"08:33",h:108},{t:"13:52",h:-109},{t:"21:15",h:73}],"2026-05-22":[{t:"09:16",h:107},{t:"14:42",h:-108},{t:"22:04",h:62}],"2026-05-23":[{t:"10:02",h:103},{t:"15:39",h:-107},{t:"22:58",h:53}],"2026-05-24":[{t:"10:56",h:100},{t:"16:43",h:-104},{t:"23:58",h:48}],"2026-05-25":[{t:"12:02",h:98},{t:"17:49",h:-101}],"2026-05-26":[{t:"06:41",h:97},{t:"13:16",h:-109},{t:"18:54",h:51}],"2026-05-27":[{t:"07:40",h:96},{t:"14:28",h:-110},{t:"19:54",h:58}],"2026-05-28":[{t:"08:33",h:94},{t:"15:33",h:-111},{t:"20:48",h:66}],"2026-05-29":[{t:"09:18",h:90},{t:"16:27",h:-109},{t:"21:36",h:75}],"2026-05-30":[{t:"09:55",h:90},{t:"17:07",h:-107},{t:"22:10",h:79}],"2026-05-31":[{t:"10:27",h:87},{t:"17:44",h:-104},{t:"22:43",h:83}],"2026-06-01":[{t:"10:58",h:84},{t:"18:17",h:-101},{t:"23:14",h:86}],"2026-06-02":[{t:"11:27",h:82},{t:"18:50",h:-97},{t:"23:45",h:88}],"2026-06-03":[{t:"11:56",h:79},{t:"19:22",h:-93}],"2026-06-04":[{t:"07:02",h:88},{t:"12:30",h:-93},{t:"19:55",h:79}],"2026-06-05":[{t:"07:35",h:87},{t:"13:05",h:-92},{t:"20:30",h:75}],"2026-06-06":[{t:"08:10",h:86},{t:"13:42",h:-93},{t:"21:07",h:70}],"2026-06-07":[{t:"08:48",h:84},{t:"14:22",h:-95},{t:"21:48",h:64}],"2026-06-08":[{t:"09:32",h:80},{t:"15:07",h:-96},{t:"22:35",h:58}],"2026-06-09":[{t:"10:24",h:74},{t:"15:58",h:-94},{t:"23:29",h:52}],"2026-06-10":[{t:"11:26",h:67},{t:"17:02",h:-89}],"2026-06-11":[{t:"06:28",h:57},{t:"12:38",h:-82},{t:"18:14",h:52}],"2026-06-12":[{t:"07:41",h:65},{t:"13:52",h:-87},{t:"19:22",h:60}],"2026-06-13":[{t:"08:45",h:76},{t:"15:00",h:-97},{t:"20:21",h:70}],"2026-06-14":[{t:"09:38",h:87},{t:"15:55",h:-106},{t:"21:11",h:80}],"2026-06-15":[{t:"10:24",h:96},{t:"16:43",h:-112},{t:"21:56",h:89}],"2026-06-16":[{t:"11:06",h:103},{t:"17:28",h:-115},{t:"22:38",h:96}],"2026-06-17":[{t:"11:45",h:108},{t:"18:09",h:-115},{t:"23:17",h:101}],"2026-06-18":[{t:"12:22",h:110},{t:"18:48",h:-113},{t:"23:55",h:104}],"2026-06-19":[{t:"07:30",h:109},{t:"13:00",h:-110},{t:"19:29",h:104}],"2026-06-20":[{t:"08:08",h:107},{t:"13:40",h:-107},{t:"20:10",h:102}],"2026-06-21":[{t:"08:48",h:105},{t:"14:23",h:-105},{t:"20:55",h:97}],"2026-06-22":[{t:"09:32",h:101},{t:"15:10",h:-104},{t:"21:43",h:90}],"2026-06-23":[{t:"10:21",h:96},{t:"16:02",h:-104},{t:"22:38",h:81}],"2026-06-24":[{t:"11:16",h:92},{t:"17:02",h:-104},{t:"23:40",h:72}],"2026-06-25":[{t:"12:19",h:89},{t:"18:11",h:-102}],"2026-06-26":[{t:"06:46",h:68},{t:"13:26",h:-105},{t:"19:22",h:57}],"2026-06-27":[{t:"07:53",h:76},{t:"14:36",h:-110},{t:"20:27",h:65}],"2026-06-28":[{t:"08:52",h:85},{t:"15:38",h:-113},{t:"21:23",h:74}],"2026-06-29":[{t:"09:43",h:92},{t:"16:30",h:-114},{t:"22:10",h:82}],"2026-06-30":[{t:"10:27",h:97},{t:"17:15",h:-112},{t:"22:52",h:89}]};
+
+// ── LEAFLET ─────────────────────────────────────────────────────
+let map, layers=[];
+
+function clearLayers(){layers.forEach(l=>map.removeLayer(l));layers=[]}
+
+function initMap(){
+  map=L.map('map',{center:[53.22,5.5],zoom:7,zoomControl:true});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:14}).addTo(map);
+  // Alle havens licht weergeven
+  Object.entries(HAVENS).forEach(([k,ll])=>{
+    if(['texel','vlieland','terschelling','ameland','schiermonnikoog'].includes(k)) return;
+    const nm=k.replace(/_h$/,'').replace(/_/g,' ');
+    const m=L.circleMarker(ll,{radius:3.5,color:'#3a7a9c',fillColor:'#0d2035',fillOpacity:.9,weight:1.5,opacity:.5}).addTo(map);
+    m.bindTooltip(nm,{permanent:false,direction:'top',className:'leaflet-dark-tooltip'});
+    layers.push(m);
+  });
+}
+
+function drawRoute(vanKey,naarKey){
+  clearLayers();
+  const key=`${vanKey}-${naarKey}`;
+  const geulKeys=ROUTE_GEULEN[key];
+  const vc=HAVENS[vanKey];
+  const nc=HAVENS[naarKey];
+
+  // Achtergrond: alle havens
+  Object.entries(HAVENS).forEach(([k,ll])=>{
+    if(['texel','vlieland','terschelling','ameland','schiermonnikoog'].includes(k)) return;
+    const nm=k.replace(/_h$/,'').replace(/_/g,' ');
+    const m=L.circleMarker(ll,{radius:3.5,color:'#3a7a9c',fillColor:'#0d2035',fillOpacity:.9,weight:1.5,opacity:.4}).addTo(map);
+    m.bindTooltip(nm,{permanent:false,direction:'top'});
+    layers.push(m);
+  });
+
+  if(!geulKeys||!vc||!nc){
+    // Fallback: rechte stippellijn
+    if(vc&&nc){
+      const l=L.polyline([vc,nc],{color:'#c49a3c',weight:2,opacity:.6,dashArray:'8,7'}).addTo(map);
+      layers.push(l);
+      map.fitBounds(l.getBounds(),{padding:[40,40]});
+    }
+    document.getElementById('mapLbl').textContent=R[key]?R[key].naam:`${vanKey} → ${naarKey}`;
+    return;
+  }
+
+  // Verzamel alle punten voor fitBounds
+  let allPts=[];
+
+  geulKeys.forEach((gk,gi)=>{
+    const pts=GEULEN[gk];
+    if(!pts) return;
+    allPts=[...allPts,...pts];
+
+    // Lichte achtergrond geullijn (blauw)
+    const bgLine=L.polyline(pts,{color:'rgba(58,122,156,0.35)',weight:4,opacity:1,lineCap:'round',lineJoin:'round'}).addTo(map);
+    layers.push(bgLine);
+
+    // Gouden stippel route lijn
+    const routeLine=L.polyline(pts,{color:'#c49a3c',weight:2.2,opacity:.9,dashArray:'9,6',lineCap:'round'}).addTo(map);
+    layers.push(routeLine);
+
+    // Tussentijdse waypoint-markers (niet begin/eind)
+    pts.forEach((pt,i)=>{
+      if(i===0||i===pts.length-1) return;
+      if(i%3!==0) return; // elke 3e punt
+      const m=L.circleMarker(pt,{radius:2.5,color:'rgba(58,122,156,0.7)',fillColor:'rgba(58,122,156,0.5)',fillOpacity:1,weight:1,opacity:.7}).addTo(map);
+      layers.push(m);
+    });
+  });
+
+  // Kritieke punten markers
+  const kp=KRITIEKE_PUNTEN[key];
+  if(kp) kp.forEach(([lat,lon,txt])=>{
+    const icon=L.divIcon({html:`<div style="background:#d94f3b;border:2px solid #0b1926;border-radius:50%;width:10px;height:10px;box-shadow:0 0 8px rgba(217,79,59,.7)"></div>`,iconSize:[10,10],iconAnchor:[5,5],className:''});
+    const m=L.marker([lat,lon],{icon}).addTo(map);
+    m.bindPopup(`<strong style="color:#e0705e">⚑ Let op</strong><br>${txt}`);
+    layers.push(m);
+  });
+
+  // Vertrek-marker (groen)
+  const iconV=L.divIcon({html:`<div style="background:#2a9a6a;border:2.5px solid #0b1926;border-radius:50%;width:13px;height:13px;box-shadow:0 0 10px rgba(42,154,106,.7)"></div>`,iconSize:[13,13],iconAnchor:[6,6],className:''});
+  const mv=L.marker(vc,{icon:iconV}).addTo(map);
+  mv.bindPopup(`<strong style="color:#4dba88">Vertrek</strong><br>${vanKey.replace(/_h$/,'').replace(/_/g,' ')}`);
+  layers.push(mv);
+
+  // Bestemming-marker (goud)
+  const iconN=L.divIcon({html:`<div style="background:#c49a3c;border:2.5px solid #0b1926;border-radius:50%;width:15px;height:15px;box-shadow:0 0 12px rgba(196,154,60,.8)"></div>`,iconSize:[15,15],iconAnchor:[7,7],className:''});
+  const mn=L.marker(nc,{icon:iconN}).addTo(map);
+  mn.bindPopup(`<strong style="color:#c49a3c">Bestemming</strong><br>${naarKey.replace(/_/g,' ')}`);
+  layers.push(mn);
+
+  // Zoom op route
+  if(allPts.length>1){
+    const bounds=L.latLngBounds(allPts);
+    map.fitBounds(bounds,{padding:[35,35]});
+  }
+
+  const route=R[key];
+  document.getElementById('mapLbl').textContent=route?route.naam:`${vanKey} → ${naarKey}`;
+}
+
+// ── HELPERS ─────────────────────────────────────────────────────
+const tm=m=>{m=((m%1440)+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
+const t2m=s=>{if(!s)return 0;const[h,mi]=s.split(':').map(Number);return h*60+(mi||0)};
+function fmtD(s){const d=new Date(s),dg=['zo','ma','di','wo','do','vr','za'],mn=['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];return`${dg[d.getDay()]} ${d.getDate()} ${mn[d.getMonth()]} ${d.getFullYear()}`}
+function getTides(ds,lk){const raw=TD[ds];if(!raw)return null;const off=OFF[lk]||0;return raw.map(t=>({type:t.h>0?'HW':'LW',time:t.t,min:t2m(t.t)+off,h:t.h})).sort((a,b)=>a.min-b.min)}
+
+// ── SPARKLINE ───────────────────────────────────────────────────
+function spark(id,tides,slots){
+  const c=document.getElementById(id);if(!c)return;
+  const dpr=window.devicePixelRatio||1,w=c.offsetWidth,h=c.offsetHeight||50;
+  c.width=w*dpr;c.height=h*dpr;const ctx=c.getContext('2d');ctx.scale(dpr,dpr);
+  const pts=[];
+  for(let i=0;i<=240;i++){
+    const t=(i/240)*1440;let v=0;
+    tides.forEach((tide,idx)=>{const nx=tides[idx+1];if(!nx)return;if(t>=tide.min&&t<=nx.min){const f=(t-tide.min)/(nx.min-tide.min);v=tide.h+(nx.h-tide.h)*(1-Math.cos(f*Math.PI))/2}});
+    pts.push({x:t,y:v});
+  }
+  const minH=Math.min(...pts.map(p=>p.y))-8,maxH=Math.max(...pts.map(p=>p.y))+8,rng=maxH-minH;
+  const px=t=>(t/1440)*w,py=v=>h-((v-minH)/rng)*h*.84-h*.06;
+  ctx.beginPath();ctx.moveTo(px(pts[0].x),h);
+  pts.forEach(p=>ctx.lineTo(px(p.x),py(p.y)));
+  ctx.lineTo(px(pts[pts.length-1].x),h);ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,h);g.addColorStop(0,'rgba(58,122,156,.3)');g.addColorStop(1,'rgba(58,122,156,.04)');
+  ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();pts.forEach((p,i)=>i?ctx.lineTo(px(p.x),py(p.y)):ctx.moveTo(px(p.x),py(p.y)));
+  ctx.strokeStyle='#3a7a9c';ctx.lineWidth=1.5;ctx.stroke();
+  const y0=py(0);ctx.beginPath();ctx.moveTo(0,y0);ctx.lineTo(w,y0);
+  ctx.strokeStyle='rgba(200,221,232,.1)';ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.stroke();ctx.setLineDash([]);
+  tides.forEach(t=>{const x=px(t.min),y=py(t.h);ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fillStyle=t.type==='HW'?'#c49a3c':'#3a7a9c';ctx.fill()});
+  if(slots)slots.filter(s=>s.kw!=='bad').forEach(s=>{
+    ctx.beginPath();ctx.moveTo(px(s.vmin),0);ctx.lineTo(px(s.vmin),h);
+    ctx.strokeStyle=s.kw==='best'?'rgba(42,154,106,.65)':'rgba(212,129,42,.55)';ctx.lineWidth=1.5;ctx.stroke();
+  });
+}
+
+// ── PLAN TRIP ───────────────────────────────────────────────────
+function planTrip(){
+  const van=document.getElementById('van').value;
+  const naar=document.getElementById('naar').value;
+  const datum=document.getElementById('datum').value;
+  const dg=parseFloat(document.getElementById('diepgang').value);
+  const kn=parseFloat(document.getElementById('snelheid').value);
+  if(!datum){alert('Kies een datum');return}
+  document.getElementById('btnPlan').disabled=true;
+  document.getElementById('loading').style.display='block';
+  document.getElementById('result').style.display='none';
+  setTimeout(()=>{
+    document.getElementById('loading').style.display='none';
+    document.getElementById('btnPlan').disabled=false;
+    render(van,naar,datum,dg,kn);
+  },600);
+}
+
+function render(van,naar,datum,dg,kn){
+  const key=`${van}-${naar}`;
+  const route=R[key];
+  const tides=getTides(datum,van);
+  const el=document.getElementById('result');
+  el.style.display='block';
+
+  drawRoute(van,naar);
+
+  if(!route){el.innerHTML=`<div class="card ca"><div class="clbl">Route niet beschikbaar</div><h3>Niet in database</h3><p>${van.replace(/_/g,' ')} → ${naar.replace(/_/g,' ')} is nog niet opgenomen.</p></div>`;return}
+  if(!tides){el.innerHTML=`<div class="card cw"><div class="clbl">Geen data</div><h3>Datum buiten bereik</h3><p>Getijdata beschikbaar 23 maart – 30 juni 2026.</p></div>`;return}
+
+  const vtMin=Math.round((route.afstand/kn)*60);
+  const etaStr=`${Math.floor(vtMin/60)}u${vtMin%60?vtMin%60+'min':''}`;
+
+  let ds='ok',dm=`✓ Diepgang ${dg}m — geen beperkingen.`;
+  if(route.wmax&&dg>route.wmax){ds='danger';dm=`✗ Diepgang ${dg}m overschrijdt wantijmax ${route.wmax}m. ${route.type==='buiten'?'Buitenom is de enige optie.':'Kies alternatieve route.'}`}
+  else if(route.wdg<99&&dg>route.wdg){ds='warn';dm=`⚠ Diepgang ${dg}m is aan de limiet (max ${route.wdg}m). Controleer actuele dieptes via nautin.nl`}
+
+  const hws=tides.filter(t=>t.type==='HW');
+  const slots=[];
+  hws.forEach(hw=>{
+    let vm=hw.min+route.voff;if(vm<0)vm+=1440;if(vm>=1440)vm-=1440;
+    const am=vm+vtMin;
+    const night=vm<330||vm>1320,late=vm>1140&&!night;
+    const kw=night?'bad':late?'ok':'best',lbl=night?'✕ Nacht':late?'◈ Laat':'✦ Optimaal';
+    slots.push({vmin:vm,amin:am,hwt:hw.time,kw,lbl});
+  });
+
+  const sH=slots.length?slots.map(s=>`<div class="slot ${s.kw}"><div class="stime">${tm(s.vmin)}</div><div class="slbl">${s.lbl}</div><p>Aankomst ~${tm(s.amin)}</p><p class="ssub">Na HW ${s.hwt} + ${Math.abs(route.voff)}min</p></div>`).join(''):`<div class="slot bad"><div class="slbl">Geen slots</div><p>Probeer andere datum.</p></div>`;
+  const tH=tides.map(t=>`<tr><td class="t${t.type}">${t.type}</td><td>${tm(t.min)}</td><td>${Math.abs(t.h)}cm ${t.h>0?'↑':'↓'} NAP</td></tr>`).join('');
+  const stH=route.desc.map(s=>`<li>${s}</li>`).join('');
+  const tipH=route.tips.map(t=>`<li>${t}</li>`).join('');
+
+  const rtB=route.type==='buiten'?`<span class="badge bb">Buitenom · Noordzee</span>`:route.type==='wad'?`<span class="badge bg">Waddenzee · Binnen</span>`:`<span class="badge bw">Wad + Zeegat</span>`;
+  const dgB=ds==='danger'?`<span class="badge ba">⚠ Diepgang kritiek</span>`:ds==='warn'?`<span class="badge bw">⚠ Diepgang let op</span>`:`<span class="badge bg">✓ Diepgang OK</span>`;
+
+  el.innerHTML=`
+    <div class="rtop">
+      <div><div class="rmeta">${fmtD(datum)}</div><div class="rtitle">${route.naam}</div></div>
+      <div class="rdist"><div class="nm">${route.afstand} nm</div><div class="eta">~${etaStr} @ ${kn}kn</div></div>
+    </div>
+    <div class="badges">${rtB}${dgB}<span class="badge">${route.marf}</span></div>
+    <div class="dbanner ${ds}">${dm}</div>
+    <div class="div">Vertrektijden</div>
+    <div class="slots">${sH}</div>
+    <div class="div">Getijcurve · ${van.replace(/_/g,' ')}</div>
+    <div class="card cs">
+      <div class="clbl">Hoog- & laagwater</div>
+      <div class="spark-wrap"><canvas id="sc" style="height:50px"></canvas></div>
+      <div class="spark-lbls"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>24:00</span></div>
+      <table class="ttable" style="margin-top:11px"><thead><tr><th>Type</th><th>Tijd</th><th>Waterstand</th></tr></thead><tbody>${tH}</tbody></table>
+    </div>
+    <div class="div">Vaarroute</div>
+    <div class="card cb"><div class="clbl">Route waypoints</div><ul class="steps">${stH}</ul><p style="margin-top:10px;color:var(--warn);font-size:.67rem">⚑ ${route.kritiek}</p></div>
+    <div class="div">Tips & aandachtspunten</div>
+    <div class="card cg"><div class="clbl">Vaaradviezen</div><ul class="steps">${tipH}</ul></div>
+    <div class="disc"><strong>⚠ Disclaimer:</strong> Astronomische getijden RWS 2026. Vaargeulcoördinaten zijn indicatief — gebruik altijd actuele zeekaarten (RWS 1811.1–1811.4). Controleer dieptes via <strong>nautin.nl</strong> en <strong>waddendata.nl</strong>.</div>`;
+
+  requestAnimationFrame(()=>spark('sc',tides,slots));
+  el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// ── INIT ────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded',()=>{
+  const today=new Date().toISOString().split('T')[0];
+  const d=today<'2026-03-23'?'2026-03-23':today>'2026-06-30'?'2026-06-30':today;
+  document.getElementById('datum').value=d;
+  initMap();
+  const upd=()=>drawRoute(document.getElementById('van').value,document.getElementById('naar').value);
+  document.getElementById('van').addEventListener('change',upd);
+  document.getElementById('naar').addEventListener('change',upd);
+  upd();
+});
+</script>
+</body>
+</html>
